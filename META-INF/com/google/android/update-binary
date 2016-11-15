@@ -1,0 +1,91 @@
+#!/sbin/sh
+# TWRP Pixel installer backend
+
+tmp=/tmp/twrp-installer-pixel
+boot_a=/dev/block/bootdevice/by-name/boot_a
+boot_b=/dev/block/bootdevice/by-name/boot
+ramdisk=$tmp/ramdisk-recovery.img
+
+if [ "$3" ]; then
+	zip=$3
+	console=/proc/$$/fd/$2
+	# write the location of the console buffer to /tmp/console for other scripts to use
+	echo "$console" > /tmp/console
+else
+	console=$(cat /tmp/console)
+	[ "$console" ] || console=/proc/$$/fd/1
+fi
+
+print() {
+	echo "ui_print ${1:- }" > $console
+	echo
+}
+
+abort() {
+	[ "$1" ] && {
+		print "Error: $1"
+		print "Aborting..."
+	}
+	cleanup
+	print "Failed to patch boot image!"
+	exit 1
+}
+
+cleanup() {
+	[ "$zip" ] && rm /tmp/console
+}
+
+extract() {
+	rm -rf "$2"
+	mkdir -p "$2"
+	unzip -o "$1" -d "$2"
+}
+
+print "#######################################"
+print "#  TWRP installer for Pixel devices   #"
+print "#######################################"
+
+# Unpack the installer
+[ "$zip" ] && {
+	print "Unpacking the installer..."
+	extract "$zip" "$tmp"
+}
+cd "$tmp" || abort "Could not enter $tmp!"
+
+chmod 0755 bootimg
+
+[ -f VERSION ] ||
+	abort "Could not find VERSION file!"
+
+[ -x bootimg ] ||
+	abort "Could not find executable bootimg binary!"
+
+[ -f "$boot_a" ] || [ -b "$boot_a" ] ||
+	abort "Could not find boot partition A at '$boot_a'!"
+
+[ -f "$boot_b" ] || [ -b "$boot_b" ] ||
+	abort "Could not find boot partition B at '$boot_b'!"
+
+[ -f "$ramdisk" ] ||
+	abort "Could not find replacement $ramdisk!"
+
+version=$(cat VERSION)
+
+print "TWRP version: $version"
+
+print "Replacing ramdisks with TWRP..."
+
+./bootimg uvv "$boot_a" --ramdisk "$ramdisk" --hash ||
+	abort "Failed to write boot image A! You may need to restore your boot A partition"
+
+print "Boot A patched for TWRP successfully!"
+
+./bootimg uvv "$boot_b" --ramdisk "$ramdisk" --hash ||
+	abort "Failed to write boot image B! You may need to restore your boot B partition"
+
+print "Boot B patched for TWRP successfully!"
+
+print "TWRP installation complete!"
+
+cleanup
+exit 0

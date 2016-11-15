@@ -1,0 +1,29 @@
+#!/bin/bash
+
+android=$HOME/build/twrp
+signapk=$android/prebuilts/sdk/tools/lib/signapk.jar
+testkey=$android/build/target/product/security/testkey
+
+abort() {
+	>&2 echo "Error: $1"
+	exit 1
+}
+
+[ -f "$signapk" ] || abort "Could not find signapk.jar at: $signapk"
+[ -f "${testkey}.pk8" ] || abort "Could not find testkey.pk8 at: ${testkey}.pk8"
+[ -f "${testkey}.x509.pem" ] || abort "Could not find testkey.x509.pem at: ${testkey}.x509.pem"
+[ -f "$1" ] || abort "Could not find zip file at: $1"
+
+fn=${1%.*}
+fe=${1##*.}
+
+[ "$fe" ] || abort "No extension found for $1!"
+
+echo "Signing '$fn.$fe' ..."
+mv -f "$fn.$fe" "$fn-unsigned.$fe" &&
+java -jar "$signapk" -w "${testkey}.x509.pem" "${testkey}.pk8" "$fn-unsigned.$fe" "$fn.$fe" &&
+rm -f "$fn-unsigned.$fe" &&
+echo "Signed: $fn.$fe" && exit 0
+
+echo "Failed to sign!!!!!!"
+exit 1
